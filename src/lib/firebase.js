@@ -4,14 +4,14 @@ import { getAuth } from "firebase/auth";
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyCxDEZZ9CgUK576_Oqam5TJP8IGkjyiN0o",
-  authDomain: "smartpark-ca8f4.firebaseapp.com",
+  apiKey: "AIzaSyA7aLzbBShHZaYuwM8cFnp3ELc_aeOJTaI",
+  authDomain: "smart-parking-app-ab59a.firebaseapp.com",
   databaseURL: "https://smartpark-ca8f4-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "smartpark-ca8f4",
-  storageBucket: "smartpark-ca8f4.firebasestorage.app",
-  messagingSenderId: "1034466379117",
-  appId: "1:1034466379117:web:d5cd567e05a02dfd20c664",
-  measurementId: "G-EW6C93T9WE"
+  projectId: "smart-parking-app-ab59a",
+  storageBucket: "smart-parking-app-ab59a.firebasestorage.app",
+  messagingSenderId: "1075763227942",
+  appId: "1:1075763227942:web:caaf8b4a6aa47c52d7e5e7",
+  measurementId: "G-6SDHCP6YGC"
 };
 
 // אתחול המערכת
