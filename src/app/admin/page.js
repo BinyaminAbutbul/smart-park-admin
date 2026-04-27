@@ -3,15 +3,21 @@ import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Sidebar from "../components/Sidebar";
 import { Toaster, toast } from 'react-hot-toast';
+import { useRouter } from "next/navigation";
 
 // חיבור ל-Firebase
-import { db } from "../../lib/firebase";
+import { db, auth } from "../../lib/firebase";
 import { ref, get, onValue } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
 
 const API_BASE_URL = "https://parking-api-vixl2yrebq-uc.a.run.app";
 
 export default function AdminPage() {
-  // --- States ---
+  // --- Auth & Loading States ---
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const router = useRouter();
+
+  // --- Data States ---
   const [carCount, setCarCount] = useState(0); 
   const [revenue, setRevenue] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -20,8 +26,6 @@ export default function AdminPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [isGateOpen, setIsGateOpen] = useState(false);
-  
-  // הגדרות מה-Firebase
   const [settings, setSettings] = useState({ pricePerHour: 15, blacklist: [] });
 
   const weeklyData = [
@@ -29,10 +33,21 @@ export default function AdminPage() {
     { name: 'ד', הכנסות: 1200 }, { name: 'ה', הכנסות: 1850 }, { name: 'ו', הכנסות: 300 }, { name: 'ש', הכנסות: 100 },
   ];
 
-  // --- Functions ---
-
-  // משיכת הגדרות מ-Firebase בזמן אמת
+  // --- 1. בדיקת התחברות (Security Guard) ---
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push("/login"); // אם לא מחובר, שלח ללוגין
+      } else {
+        setIsAuthLoading(false); // מחובר, אפשר להציג את הדף
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // --- 2. משיכת הגדרות מ-Firebase בזמן אמת ---
+  useEffect(() => {
+    if (isAuthLoading) return;
     const settingsRef = ref(db, 'system/settings');
     const unsubscribe = onValue(settingsRef, (snapshot) => {
       const data = snapshot.val();
@@ -44,9 +59,9 @@ export default function AdminPage() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [isAuthLoading]);
 
-  // פונקציית בדיקת אבטחה מול ה-Blacklist האמיתי מה-DB
+  // --- 3. פונקציות עזר ולוגיקה ---
   const checkSecurity = (plate) => {
     if (settings.blacklist.includes(plate)) {
       const newAlert = {
@@ -59,17 +74,14 @@ export default function AdminPage() {
         duration: 8000,
         style: { border: '2px solid #ef4444', padding: '16px', color: '#7f1d1d' }
       });
-      return true; // רכב חסום
+      return true;
     }
-    return false; // רכב תקין
+    return false;
   };
 
   const handleQuickSearch = async () => {
     if (!searchPlate) return;
-    
-    // בדיקת אבטחה ראשונית לפני פנייה לשרת
     const isBlocked = checkSecurity(searchPlate);
-    
     try {
       const response = await fetch(`${API_BASE_URL}/api/parking/status/${searchPlate}`, {
         headers: { "ngrok-skip-browser-warning": "69420" }
@@ -92,8 +104,9 @@ export default function AdminPage() {
     setTimeout(() => setIsGateOpen(false), 5000);
   };
 
-  // --- Effects ---
+  // --- 4. משיכת סטטיסטיקה מה-API ---
   useEffect(() => {
+    if (isAuthLoading) return;
     const fetchData = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/admin/stats`, {
@@ -101,11 +114,8 @@ export default function AdminPage() {
         });
         if (!response.ok) throw new Error("Server Error");
         const data = await response.json();
-        
         setCarCount(data.carCount);
-        // חישוב הכנסות לפי המחיר שנקבע ב-Firebase
         setRevenue(data.carCount * settings.pricePerHour);
-        
         setLoading(false);
       } catch (error) {
         console.error("Connection failed:", error);
@@ -114,18 +124,29 @@ export default function AdminPage() {
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 10000); // רענון כל 10 שניות
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, [settings.pricePerHour]); // מתעדכן אם המחיר משתנה
+  }, [isAuthLoading, settings.pricePerHour]);
+
+  // מסך טעינה לבדיקת הרשאות
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-white font-black text-2xl animate-pulse font-mono">
+          בודק הרשאות... 🔒
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-50" dir="rtl">
       <Toaster position="top-left" />
       <Sidebar />
 
-      <main className="flex-1 p-8 overflow-y-auto flex flex-col gap-8">
+      <main className="flex-1 p-8 overflow-y-auto flex flex-col gap-8 text-black">
         
-        {/* 1. Header עם חיפוש */}
+        {/* 1. Header */}
         <header className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 gap-4">
           <div>
             <h1 className="text-4xl font-black text-gray-900">לוח בקרה</h1>
