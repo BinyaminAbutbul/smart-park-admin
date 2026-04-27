@@ -5,6 +5,7 @@ import { getDatabase } from "firebase/database";
 const firebaseConfig = {
   apiKey: "AIzaSyCxDEZZ9CgUK576_Oqam5TJP8IGkjyiN0o",
   authDomain: "smartpark-ca8f4.firebaseapp.com",
+  databaseURL: "https://smartpark-ca8f4-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "smartpark-ca8f4",
   storageBucket: "smartpark-ca8f4.firebasestorage.app",
   messagingSenderId: "1034466379117",
