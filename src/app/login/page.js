@@ -37,16 +37,19 @@ export default function AuthPage() {
       }
 
       // --- בדיקת תפקיד וניתוב חכם ---
+      // אנחנו מושכים את הנתונים מה-DB כדי לדעת לאן לשלוח את המשתמש
       const userRef = ref(db, `users/${user.uid}`);
       const snapshot = await get(userRef);
       const userData = snapshot.val();
 
       if (userData?.role === "admin") {
         toast.success(`שלום מנהל, ${userData.name || ''}`);
-        router.push("/admin"); // מנהל הולך לאדמין
+        // שים לב: כאן שיניתי ל-/admin במקום /dashboard
+        router.push("/admin"); 
       } else {
         toast.success(`ברוך הבא, ${userData?.name || 'משתמש'}`);
-        router.push("/profile"); // משתמש רגיל הולך לפרופיל
+        // משתמש רגיל הולך לדף הפרופיל שלו
+        router.push("/profile"); 
       }
 
     } catch (error) {
