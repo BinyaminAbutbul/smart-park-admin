@@ -4,6 +4,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import Sidebar from "../components/Sidebar";
 import { Toaster, toast } from 'react-hot-toast';
 
+// חיבור ל-Firebase
+import { db } from "@/lib/firebase";
+import { ref, get, onValue } from "firebase/database";
+
 const API_BASE_URL = "https://parking-api-vixl2yrebq-uc.a.run.app";
 
 export default function AdminPage() {
@@ -16,6 +20,9 @@ export default function AdminPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [isGateOpen, setIsGateOpen] = useState(false);
+  
+  // הגדרות מה-Firebase
+  const [settings, setSettings] = useState({ pricePerHour: 15, blacklist: [] });
 
   const weeklyData = [
     { name: 'א', הכנסות: 400 }, { name: 'ב', הכנסות: 700 }, { name: 'ג', הכנסות: 500 },
@@ -24,37 +31,58 @@ export default function AdminPage() {
 
   // --- Functions ---
 
+  // משיכת הגדרות מ-Firebase בזמן אמת
+  useEffect(() => {
+    const settingsRef = ref(db, 'system/settings');
+    const unsubscribe = onValue(settingsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setSettings({
+          pricePerHour: data.pricePerHour || 15,
+          blacklist: data.blacklist || []
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // פונקציית בדיקת אבטחה מול ה-Blacklist האמיתי מה-DB
   const checkSecurity = (plate) => {
-    const blacklist = ["12-345-67", "99-888-77"]; // ניתן לחבר ל-Firestore בהמשך
-    if (blacklist.includes(plate)) {
+    if (settings.blacklist.includes(plate)) {
       const newAlert = {
         id: Date.now(),
         msg: `רכב חסום זוהה! לוחית: ${plate}`,
         time: new Date().toLocaleTimeString('he-IL', {hour: '2-digit', minute:'2-digit'})
       };
       setAlerts(prev => [newAlert, ...prev].slice(0, 3));
-      toast.error(`אבטחה: רכב חסום ${plate} בשער!`, { duration: 6000 });
-      return true;
+      toast.error(`אבטחה: רכב חסום ${plate} בשער!`, { 
+        duration: 8000,
+        style: { border: '2px solid #ef4444', padding: '16px', color: '#7f1d1d' }
+      });
+      return true; // רכב חסום
     }
-    return false;
+    return false; // רכב תקין
   };
 
   const handleQuickSearch = async () => {
     if (!searchPlate) return;
-    const loadingToast = toast.loading("מחפש רכב...");
+    
+    // בדיקת אבטחה ראשונית לפני פנייה לשרת
+    const isBlocked = checkSecurity(searchPlate);
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/parking/status/${searchPlate}`);
+      const response = await fetch(`${API_BASE_URL}/api/parking/status/${searchPlate}`, {
+        headers: { "ngrok-skip-browser-warning": "69420" }
+      });
       if (response.ok) {
         const data = await response.json();
-        checkSecurity(searchPlate); 
         setSelectedCar(data);
         setIsModalOpen(true);
-        toast.dismiss(loadingToast);
-      } else {
-        toast.error("רכב לא נמצא בחניון", { id: loadingToast });
+      } else if (!isBlocked) {
+        toast.error("רכב לא נמצא בחניון");
       }
     } catch (error) {
-      toast.error("שגיאה בחיבור לשרת", { id: loadingToast });
+      toast.error("שגיאה בתקשורת עם השרת");
     }
   };
 
@@ -68,24 +96,27 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/admin/stats`);
+        const response = await fetch(`${API_BASE_URL}/api/admin/stats`, {
+          headers: { 'ngrok-skip-browser-warning': '69420' },
+        });
         if (!response.ok) throw new Error("Server Error");
         const data = await response.json();
         
         setCarCount(data.carCount);
-        // אם השרת לא מחזיר revenue, נשמור על ערך ברירת מחדל או נחשב
-        if (data.revenue) setRevenue(data.revenue);
+        // חישוב הכנסות לפי המחיר שנקבע ב-Firebase
+        setRevenue(data.carCount * settings.pricePerHour);
         
         setLoading(false);
       } catch (error) {
         console.error("Connection failed:", error);
+        setLoading(false);
       }
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 5000); // רענון כל 5 שניות
+    const interval = setInterval(fetchData, 10000); // רענון כל 10 שניות
     return () => clearInterval(interval);
-  }, []);
+  }, [settings.pricePerHour]); // מתעדכן אם המחיר משתנה
 
   return (
     <div className="flex min-h-screen bg-gray-50" dir="rtl">
@@ -98,7 +129,7 @@ export default function AdminPage() {
         <header className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 gap-4">
           <div>
             <h1 className="text-4xl font-black text-gray-900">לוח בקרה</h1>
-            <p className="text-gray-500 mt-1 font-medium">שידור חי משרת Google Cloud</p>
+            <p className="text-gray-500 mt-1 font-medium italic">תעריף נוכחי: ₪{settings.pricePerHour} לשעה</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -106,7 +137,7 @@ export default function AdminPage() {
               <input 
                 type="text" 
                 placeholder="חיפוש לוחית..." 
-                className="bg-transparent border-none focus:outline-none px-4 py-2 text-sm font-bold text-black font-mono w-40"
+                className="bg-transparent border-none focus:outline-none px-4 py-2 text-sm font-bold text-black font-mono w-40 text-center"
                 value={searchPlate}
                 onChange={(e) => setSearchPlate(e.target.value)}
               />
@@ -125,19 +156,19 @@ export default function AdminPage() {
 
         {/* 2. התראות אבטחה */}
         {alerts.length > 0 && (
-          <div className="bg-red-50 border-2 border-red-100 rounded-[2rem] p-6 animate-in slide-in-from-top duration-500">
+          <div className="bg-red-50 border-2 border-red-100 rounded-[2rem] p-6 animate-pulse">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <span className="text-2xl animate-pulse">⚠️</span>
-                <h3 className="text-red-800 font-black text-xl">התראות אבטחה דחופות</h3>
+                <span className="text-2xl">🚨</span>
+                <h3 className="text-red-800 font-black text-xl">אבטחה: רכבים חסומים זוהו</h3>
               </div>
-              <button onClick={() => setAlerts([])} className="text-red-400 hover:text-red-700 text-xs font-bold">נקה הכל</button>
+              <button onClick={() => setAlerts([])} className="text-red-400 hover:text-red-700 text-xs font-bold bg-white px-3 py-1 rounded-full shadow-sm">נקה התראות</button>
             </div>
             <div className="space-y-3">
               {alerts.map(alert => (
-                <div key={alert.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border-r-4 border-red-600">
-                  <span className="text-red-600 font-bold">{alert.msg}</span>
-                  <span className="text-gray-400 text-sm font-mono">{alert.time}</span>
+                <div key={alert.id} className="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border-r-8 border-red-600">
+                  <span className="text-red-600 font-black text-lg">{alert.msg}</span>
+                  <span className="text-gray-400 text-sm font-mono font-bold bg-gray-50 px-2 py-1 rounded-lg">{alert.time}</span>
                 </div>
               ))}
             </div>
@@ -147,7 +178,7 @@ export default function AdminPage() {
         {/* 3. כרטיסי סטטיסטיקה */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-gray-200/40 border border-gray-50 flex items-center gap-6">
-            <div className="bg-blue-100 p-5 rounded-3xl text-3xl">🚗</div>
+            <div className="bg-blue-100 p-5 rounded-3xl text-3xl shadow-inner">🚗</div>
             <div>
               <p className="text-gray-400 text-xs font-black uppercase tracking-wider">רכבים בחניון</p>
               <h3 className="text-4xl font-black text-gray-900">{carCount} <span className="text-base text-gray-300 font-normal">/ 100</span></h3>
@@ -155,14 +186,14 @@ export default function AdminPage() {
           </div>
 
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl shadow-gray-200/40 border border-gray-50 flex items-center gap-6">
-            <div className="bg-green-100 p-5 rounded-3xl text-3xl">💰</div>
+            <div className="bg-green-100 p-5 rounded-3xl text-3xl shadow-inner">💰</div>
             <div>
-              <p className="text-gray-400 text-xs font-black uppercase tracking-wider">הכנסות היום</p>
-              <h3 className="text-4xl font-black text-gray-900">₪{revenue}</h3>
+              <p className="text-gray-400 text-xs font-black uppercase tracking-wider">הכנסה משוערת</p>
+              <h3 className="text-4xl font-black text-green-600">₪{revenue}</h3>
             </div>
           </div>
 
-          <div className={`p-8 rounded-[2.5rem] shadow-xl transition-all duration-500 border ${isGateOpen ? 'bg-green-500 border-green-400' : 'bg-white border-gray-50 shadow-gray-200/40'}`}>
+          <div className={`p-8 rounded-[2.5rem] shadow-xl transition-all duration-500 border ${isGateOpen ? 'bg-green-500 border-green-400 scale-105' : 'bg-white border-gray-50 shadow-gray-200/40'}`}>
             <div className="flex items-center gap-6">
               <div className={`p-5 rounded-3xl text-3xl transition-all ${isGateOpen ? 'bg-white rotate-12' : 'bg-orange-100'}`}>
                 {isGateOpen ? '🔓' : '🔒'}
@@ -170,7 +201,7 @@ export default function AdminPage() {
               <div>
                 <p className={`text-xs font-black uppercase tracking-wider ${isGateOpen ? 'text-green-100' : 'text-gray-400'}`}>סטטוס מחסום</p>
                 <h3 className={`text-2xl font-black ${isGateOpen ? 'text-white' : 'text-green-500'}`}>
-                  {isGateOpen ? 'פתוח' : 'תקין'}
+                  {isGateOpen ? 'פתוח כעת' : 'נעול / תקין'}
                 </h3>
               </div>
             </div>
@@ -186,7 +217,6 @@ export default function AdminPage() {
                 <BarChart data={weeklyData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontWeight: 'bold'}} />
-                  <YAxis hide />
                   <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'}} />
                   <Bar dataKey="הכנסות" fill="#3b82f6" radius={[12, 12, 12, 12]} barSize={40} />
                 </BarChart>
@@ -197,15 +227,18 @@ export default function AdminPage() {
           <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-gray-200/40 border border-gray-50">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-black text-gray-800">רכבים אחרונים</h3>
-              <span className="text-blue-600 text-xs font-bold bg-blue-50 px-3 py-1 rounded-full">שידור חי</span>
+              <span className="text-blue-600 text-xs font-bold bg-blue-50 px-3 py-1 rounded-full animate-pulse">LIVE</span>
             </div>
             <div className="space-y-4">
               {[ {p: '12-345-67', t: '11:12'}, {p: '88-999-12', t: '11:05'}, {p: '55-444-33', t: '10:58'} ].map((car, i) => (
-                <div key={i} className="flex justify-between items-center p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 hover:bg-blue-50/50 transition-all group">
+                <div key={i} className={`flex justify-between items-center p-5 rounded-[1.5rem] border transition-all group ${settings.blacklist.includes(car.p) ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100 hover:bg-blue-50/50'}`}>
                   <span className="text-gray-400 font-bold text-sm group-hover:text-blue-400">{car.t}</span>
-                  <span className="bg-yellow-100 border-2 border-gray-800 px-4 py-1.5 rounded-xl text-gray-900 font-black font-mono shadow-sm">
-                    {car.p}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {settings.blacklist.includes(car.p) && <span className="text-red-500 font-black text-xs">חסום!</span>}
+                    <span className={`border-2 px-4 py-1.5 rounded-xl font-black font-mono shadow-sm ${settings.blacklist.includes(car.p) ? 'bg-red-600 text-white border-red-800' : 'bg-yellow-100 text-gray-900 border-gray-800'}`}>
+                      {car.p}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -216,33 +249,31 @@ export default function AdminPage() {
         {isModalOpen && selectedCar && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-300">
-              <div className="bg-blue-600 p-8 text-center relative">
-                <button onClick={() => setIsModalOpen(false)} className="absolute top-6 left-6 text-white/50 hover:text-white">✕</button>
+              <div className={`${settings.blacklist.includes(selectedCar.plate) ? 'bg-red-600' : 'bg-blue-600'} p-8 text-center relative`}>
+                <button onClick={() => setIsModalOpen(false)} className="absolute top-6 left-6 text-white/50 hover:text-white font-bold">✕</button>
                 <div className="bg-yellow-400 border-4 border-black inline-block px-6 py-2 rounded-xl mb-4 shadow-lg">
-                  <span className="text-2xl font-black font-mono text-black">{selectedCar.car_id}</span>
+                  <span className="text-2xl font-black font-mono text-black">{selectedCar.plate}</span>
                 </div>
-                <h2 className="text-white text-xl font-black">פרטי רכב מחשבון השרת</h2>
+                <h2 className="text-white text-xl font-black">
+                  {settings.blacklist.includes(selectedCar.plate) ? '⚠️ רכב חסום במערכת' : 'פרטי רכב נוכחי'}
+                </h2>
               </div>
               <div className="p-8 space-y-6 text-right">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 p-4 rounded-2xl">
-                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">מיקום</p>
-                    <p className="text-lg font-black text-gray-900">קומה {selectedCar.floor_id}</p>
+                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">זמן שהייה</p>
+                    <p className="text-lg font-black text-gray-900">{selectedCar.minutes_parked} דקות</p>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-2xl">
-                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">מקור נתונים</p>
-                    <p className="text-lg font-black text-blue-600">{selectedCar.source}</p>
+                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">לתשלום (לפי ₪{settings.pricePerHour})</p>
+                    <p className="text-lg font-black text-green-600">₪{Math.ceil(selectedCar.minutes_parked / 60 * settings.pricePerHour)}</p>
                   </div>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-2xl text-center">
-                   <p className="text-blue-400 text-xs font-bold mb-1">זמן כניסה</p>
-                   <p className="text-gray-900 font-bold">{new Date(selectedCar.timestamp).toLocaleString('he-IL')}</p>
                 </div>
                 <button 
                   onClick={() => { handleOpenGate(); setIsModalOpen(false); }}
-                  className="w-full bg-gray-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all shadow-lg"
+                  className={`w-full p-4 rounded-2xl font-black transition-all ${settings.blacklist.includes(selectedCar.plate) ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-900 hover:bg-black'} text-white`}
                 >
-                  פתח מחסום ידנית
+                  {settings.blacklist.includes(selectedCar.plate) ? 'פתח מחסום למרות החסימה' : 'פתח מחסום לרכב זה'}
                 </button>
               </div>
             </div>
