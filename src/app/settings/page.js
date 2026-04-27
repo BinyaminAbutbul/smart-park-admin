@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
+import { db } from "../../lib/firebase";
 import { ref, set, onValue } from "firebase/database";
 import Sidebar from "../components/Sidebar";
 import { Toaster, toast } from 'react-hot-toast';
