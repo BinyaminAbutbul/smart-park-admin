@@ -5,7 +5,7 @@ import Sidebar from "../components/Sidebar";
 import { Toaster, toast } from 'react-hot-toast';
 
 // חיבור ל-Firebase
-import { db } from "@/lib/firebase";
+import { db } from "../../lib/firebase";
 import { ref, get, onValue } from "firebase/database";
 
 const API_BASE_URL = "https://parking-api-vixl2yrebq-uc.a.run.app";
