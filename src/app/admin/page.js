@@ -24,9 +24,8 @@ export default function AdminPage() {
 
   // --- Functions ---
 
-  // פונקציית בדיקת אבטחה מול רשימה שחורה
   const checkSecurity = (plate) => {
-    const blacklist = ["12-345-67", "99-888-77"]; // בעתיד זה יגיע מה-DB
+    const blacklist = ["12-345-67", "99-888-77"]; // ניתן לחבר ל-Firestore בהמשך
     if (blacklist.includes(plate)) {
       const newAlert = {
         id: Date.now(),
@@ -42,27 +41,26 @@ export default function AdminPage() {
 
   const handleQuickSearch = async () => {
     if (!searchPlate) return;
+    const loadingToast = toast.loading("מחפש רכב...");
     try {
-      const response = await fetch(`${API_BASE_URL}/api/parking/status/${searchPlate}`, {
-        headers: { "ngrok-skip-browser-warning": "69420" }
-      });
+      const response = await fetch(`${API_BASE_URL}/api/parking/status/${searchPlate}`);
       if (response.ok) {
         const data = await response.json();
-        checkSecurity(searchPlate); // בדיקת אבטחה בחיפוש
+        checkSecurity(searchPlate); 
         setSelectedCar(data);
         setIsModalOpen(true);
+        toast.dismiss(loadingToast);
       } else {
-        toast.error("רכב לא נמצא בחניון");
+        toast.error("רכב לא נמצא בחניון", { id: loadingToast });
       }
     } catch (error) {
-      toast.error("שגיאה בחיפוש");
+      toast.error("שגיאה בחיבור לשרת", { id: loadingToast });
     }
   };
 
   const handleOpenGate = () => {
     setIsGateOpen(true);
     toast.success('המחסום נפתח בהצלחה!');
-    // המחסום נסגר אוטומטית אחרי 5 שניות בתצוגה
     setTimeout(() => setIsGateOpen(false), 5000);
   };
 
@@ -70,25 +68,22 @@ export default function AdminPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/admin/stats`, {
-          headers: { 'ngrok-skip-browser-warning': '69420' },
-        });
+        const response = await fetch(`${API_BASE_URL}/api/admin/stats`);
         if (!response.ok) throw new Error("Server Error");
         const data = await response.json();
         
         setCarCount(data.carCount);
-        setRevenue(data.revenue);
+        // אם השרת לא מחזיר revenue, נשמור על ערך ברירת מחדל או נחשב
+        if (data.revenue) setRevenue(data.revenue);
         
-        // כאן אפשר להריץ checkSecurity על הרכבים האחרונים שנכנסו מהשרת
         setLoading(false);
       } catch (error) {
         console.error("Connection failed:", error);
-        setLoading(false);
       }
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 5000); // רענון כל 5 שניות
     return () => clearInterval(interval);
   }, []);
 
@@ -103,7 +98,7 @@ export default function AdminPage() {
         <header className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 gap-4">
           <div>
             <h1 className="text-4xl font-black text-gray-900">לוח בקרה</h1>
-            <p className="text-gray-500 mt-1 font-medium">ברוך הבא, מנהל החניון</p>
+            <p className="text-gray-500 mt-1 font-medium">שידור חי משרת Google Cloud</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -128,7 +123,7 @@ export default function AdminPage() {
           </div>
         </header>
 
-        {/* 2. התראות אבטחה (מופיע רק אם יש התראה) */}
+        {/* 2. התראות אבטחה */}
         {alerts.length > 0 && (
           <div className="bg-red-50 border-2 border-red-100 rounded-[2rem] p-6 animate-in slide-in-from-top duration-500">
             <div className="flex items-center justify-between mb-4">
@@ -184,7 +179,6 @@ export default function AdminPage() {
 
         {/* 4. גרף ורכבים אחרונים */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* גרף */}
           <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-gray-200/40 border border-gray-50">
             <h3 className="text-xl font-black text-gray-800 mb-8">סיכום הכנסות שבועי</h3>
             <div className="h-[300px]">
@@ -192,6 +186,7 @@ export default function AdminPage() {
                 <BarChart data={weeklyData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontWeight: 'bold'}} />
+                  <YAxis hide />
                   <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'}} />
                   <Bar dataKey="הכנסות" fill="#3b82f6" radius={[12, 12, 12, 12]} barSize={40} />
                 </BarChart>
@@ -199,7 +194,6 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* רכבים אחרונים */}
           <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-gray-200/40 border border-gray-50">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-xl font-black text-gray-800">רכבים אחרונים</h3>
@@ -225,26 +219,30 @@ export default function AdminPage() {
               <div className="bg-blue-600 p-8 text-center relative">
                 <button onClick={() => setIsModalOpen(false)} className="absolute top-6 left-6 text-white/50 hover:text-white">✕</button>
                 <div className="bg-yellow-400 border-4 border-black inline-block px-6 py-2 rounded-xl mb-4 shadow-lg">
-                  <span className="text-2xl font-black font-mono text-black">{selectedCar.plate}</span>
+                  <span className="text-2xl font-black font-mono text-black">{selectedCar.car_id}</span>
                 </div>
-                <h2 className="text-white text-xl font-black">פרטי רכב נוכחי</h2>
+                <h2 className="text-white text-xl font-black">פרטי רכב מחשבון השרת</h2>
               </div>
               <div className="p-8 space-y-6 text-right">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-gray-50 p-4 rounded-2xl">
-                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">זמן שהייה</p>
-                    <p className="text-lg font-black text-gray-900">{selectedCar.minutes_parked} דקות</p>
+                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">מיקום</p>
+                    <p className="text-lg font-black text-gray-900">קומה {selectedCar.floor_id}</p>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-2xl">
-                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">לתשלום כרגע</p>
-                    <p className="text-lg font-black text-green-600">₪{selectedCar.total_price}</p>
+                    <p className="text-gray-400 text-xs font-bold mb-1 mr-1">מקור נתונים</p>
+                    <p className="text-lg font-black text-blue-600">{selectedCar.source}</p>
                   </div>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-2xl text-center">
+                   <p className="text-blue-400 text-xs font-bold mb-1">זמן כניסה</p>
+                   <p className="text-gray-900 font-bold">{new Date(selectedCar.timestamp).toLocaleString('he-IL')}</p>
                 </div>
                 <button 
                   onClick={() => { handleOpenGate(); setIsModalOpen(false); }}
-                  className="w-full bg-gray-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all"
+                  className="w-full bg-gray-900 text-white p-4 rounded-2xl font-black hover:bg-black transition-all shadow-lg"
                 >
-                  פתח מחסום לרכב זה
+                  פתח מחסום ידנית
                 </button>
               </div>
             </div>
