@@ -1,40 +1,55 @@
 "use client";
 import { useState, useEffect } from "react";
-import { db } from "../../lib/firebase";
-import { ref, set, onValue } from "firebase/database";
+import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import { Toaster, toast } from 'react-hot-toast';
+
+// חיבור ל-Firebase
+import { db, auth } from "../../lib/firebase";
+import { ref, set, onValue } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function SettingsPage() {
   const [price, setPrice] = useState(15);
   const [blacklist, setBlacklist] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const router = useRouter();
 
-  // משיכת נתונים קיימים מה-Firebase ברגע שהדף נטען
+  // --- 1. הגנה על הדף: בדיקה אם המשתמש מחובר ---
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push("/login"); // לא מחובר? שלח אותו להתחבר
+      } else {
+        setIsAuthLoading(false); // מחובר, אפשר להמשיך
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  // --- 2. משיכת נתונים קיימים מה-Firebase ברגע שהדף מאושר ---
+  useEffect(() => {
+    if (isAuthLoading) return;
+
     const settingsRef = ref(db, 'system/settings');
     const unsubscribe = onValue(settingsRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
         setPrice(data.pricePerHour || 15);
-        // הפיכת המערך חזרה לטקסט מופרד בפסיקים לצורך התצוגה
         setBlacklist(data.blacklist ? data.blacklist.join(", ") : "");
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isAuthLoading]);
 
   const handleSave = async () => {
     try {
-      // הפיכת הטקסט של הרשימה השחורה למערך (Array) של לוחית רישוי
       const blacklistArray = blacklist
         .split(",")
         .map(item => item.trim())
         .filter(item => item !== "");
       
-      // שמירה ב-Realtime Database
       await set(ref(db, 'system/settings'), {
         pricePerHour: Number(price),
         blacklist: blacklistArray,
@@ -48,8 +63,19 @@ export default function SettingsPage() {
     }
   };
 
+  // מסך טעינה בזמן בדיקת ההרשאות
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-white font-black text-2xl animate-pulse font-mono">
+          בודק הרשאות... 🔒
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen bg-gray-50" dir="rtl">
+    <div className="flex min-h-screen bg-gray-50 text-black" dir="rtl">
       <Toaster position="top-left" />
       <Sidebar />
       
@@ -98,7 +124,7 @@ export default function SettingsPage() {
               className="w-full bg-blue-600 hover:bg-blue-700 text-white p-5 rounded-2xl font-black text-lg transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-3 active:scale-[0.98]"
             >
               <span>💾</span>
-              שמור שינויים ב-Firebase
+              שמור שינויים מאובטחים
             </button>
             
           </div>
