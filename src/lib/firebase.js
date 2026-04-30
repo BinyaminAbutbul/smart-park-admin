@@ -1,23 +1,22 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore } from "firebase/firestore"; // שינינו מ-database ל-firestore
+import { getDatabase } from "firebase/database";
 import { getAuth } from "firebase/auth";
 
-// כאן תדביק את ה-firebaseConfig המדויק שהעתקת מה-General Settings בגוגל
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSy...", // תוודא שזה ה-key שלך
+  apiKey: "AIzaSyA7aLzbBShHZaYuwM8cFnp3ELc_aeOJTaI",
   authDomain: "smart-parking-app-ab59a.firebaseapp.com",
+  databaseURL: "https://smart-parking-app-ab59a-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "smart-parking-app-ab59a",
   storageBucket: "smart-parking-app-ab59a.firebasestorage.app",
   messagingSenderId: "1075763227942",
-  appId: "1:1075763227942:web:...",
-  measurementId: "G-..."
+  appId: "1:1075763227942:web:caaf8b4a6aa47c52d7e5e7",
+  measurementId: "G-6SDHCP6YGC"
 };
 
-// אתחול האפליקציה
+// אתחול המערכת
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-
-// חיבור ל-Firestore (בסיס הנתונים שלך)
-const db = getFirestore(app);
+const db = getDatabase(app);
 const auth = getAuth(app);
 
 export { db, auth };

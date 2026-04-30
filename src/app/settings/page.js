@@ -1,133 +1,104 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
 import { Toaster, toast } from 'react-hot-toast';
-
-// חיבור ל-Firebase
-import { db, auth } from "../../lib/firebase";
-import { ref, set, onValue } from "firebase/database";
-import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "../../lib/firebase";
+import { ref, get, update } from "firebase/database";
+import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const [price, setPrice] = useState(15);
-  const [blacklist, setBlacklist] = useState("");
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [hourlyRate, setHourlyRate] = useState(20);
+  const [adminName, setAdminName] = useState("");
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // --- 1. הגנה על הדף: בדיקה אם המשתמש מחובר ---
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/login"); // לא מחובר? שלח אותו להתחבר
-      } else {
-        setIsAuthLoading(false); // מחובר, אפשר להמשיך
-      }
-    });
-    return () => unsubscribe();
+    const fetchSettings = async () => {
+      auth.onAuthStateChanged(async (user) => {
+        if (!user) {
+          router.push("/login");
+          return;
+        }
+        
+        // משיכת נתוני מנהל מה-Database
+        const userRef = ref(db, `users/${user.uid}`);
+        const snapshot = await get(userRef);
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          setAdminName(data.name || "");
+          // נניח שיש לנו שדה הגדרות כלליות ב-DB
+          setHourlyRate(data.hourlyRate || 20);
+        }
+        setLoading(false);
+      });
+    };
+    fetchSettings();
   }, [router]);
 
-  // --- 2. משיכת נתונים קיימים מה-Firebase ברגע שהדף מאושר ---
-  useEffect(() => {
-    if (isAuthLoading) return;
-
-    const settingsRef = ref(db, 'system/settings');
-    const unsubscribe = onValue(settingsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setPrice(data.pricePerHour || 15);
-        setBlacklist(data.blacklist ? data.blacklist.join(", ") : "");
-      }
-    });
-
-    return () => unsubscribe();
-  }, [isAuthLoading]);
-
-  const handleSave = async () => {
+  const handleSave = async (e) => {
+    e.preventDefault();
     try {
-      const blacklistArray = blacklist
-        .split(",")
-        .map(item => item.trim())
-        .filter(item => item !== "");
-      
-      await set(ref(db, 'system/settings'), {
-        pricePerHour: Number(price),
-        blacklist: blacklistArray,
-        lastUpdated: new Date().toISOString()
-      });
-      
-      toast.success("ההגדרות נשמרו בהצלחה בשרת!");
+      const user = auth.currentUser;
+      if (user) {
+        await update(ref(db, `users/${user.uid}`), {
+          name: adminName,
+          hourlyRate: hourlyRate
+        });
+        toast.success("ההגדרות נשמרו בהצלחה!");
+      }
     } catch (error) {
-      toast.error("שגיאה בשמירת הנתונים: " + error.message);
-      console.error(error);
+      toast.error("שגיאה בשמירה: " + error.message);
     }
   };
 
-  // מסך טעינה בזמן בדיקת ההרשאות
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-white font-black text-2xl animate-pulse font-mono">
-          בודק הרשאות... 🔒
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div className="p-10 text-center font-black">טוען הגדרות...</div>;
 
   return (
-    <div className="flex min-h-screen bg-gray-50 text-black" dir="rtl">
-      <Toaster position="top-left" />
+    <div className="flex min-h-screen bg-gray-50" dir="rtl">
+      <Toaster />
       <Sidebar />
-      
-      <main className="flex-1 p-12">
-        <header className="mb-12">
+      <main className="flex-1 p-8 text-black">
+        <header className="mb-10">
           <h1 className="text-4xl font-black text-gray-900">הגדרות מערכת</h1>
-          <p className="text-gray-500 mt-2 font-medium">ניהול תעריפים ואבטחת חניון</p>
+          <p className="text-gray-500">ניהול פרמטרים ופרטי מנהל</p>
         </header>
-        
-        <div className="bg-white p-10 rounded-[3rem] shadow-xl shadow-gray-200/50 max-w-2xl border border-gray-100">
-          <div className="space-y-8">
+
+        <div className="max-w-2xl bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100">
+          <form onSubmit={handleSave} className="space-y-8">
             
-            {/* הגדרת מחיר */}
-            <div className="space-y-3">
-              <label className="block text-sm font-black text-gray-700 mr-2 uppercase tracking-wide">
-                מחיר לשעת חניה (₪)
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 right-4 flex items-center text-gray-400 font-bold">₪</span>
+            {/* הגדרות פרופיל */}
+            <div className="space-y-4">
+              <h3 className="text-xl font-black text-gray-800 border-b pb-2">פרופיל מנהל</h3>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-gray-400 mr-2">שם מלא</label>
                 <input 
-                  type="number" 
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  className="w-full p-4 pr-10 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-500 focus:bg-white transition-all outline-none font-black text-lg text-gray-900"
+                  type="text" 
+                  value={adminName}
+                  onChange={(e) => setAdminName(e.target.value)}
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold"
                 />
               </div>
             </div>
 
-            {/* רשימה שחורה */}
-            <div className="space-y-3">
-              <label className="block text-sm font-black text-gray-700 mr-2 uppercase tracking-wide">
-                רשימה שחורה (לוחיות חסומות)
-              </label>
-              <textarea 
-                value={blacklist}
-                onChange={(e) => setBlacklist(e.target.value)}
-                placeholder="למשל: 12-345-67, 88-999-00"
-                className="w-full p-5 bg-gray-50 border-2 border-gray-100 rounded-[2rem] focus:border-red-400 focus:bg-white transition-all outline-none font-bold text-gray-700 h-40 resize-none"
-              />
-              <p className="text-xs text-gray-400 mr-2">* הפרד לוחיות רישוי באמצעות פסיק (,)</p>
+            {/* הגדרות חניון */}
+            <div className="space-y-4">
+              <h3 className="text-xl font-black text-gray-800 border-b pb-2">תעריפי חניון</h3>
+              <div className="space-y-1">
+                <label className="text-xs font-black text-gray-400 mr-2">מחיר לשעה (₪)</label>
+                <input 
+                  type="number" 
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 font-bold"
+                />
+              </div>
             </div>
 
-            {/* כפתור שמירה */}
-            <button 
-              onClick={handleSave}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white p-5 rounded-2xl font-black text-lg transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-3 active:scale-[0.98]"
-            >
-              <span>💾</span>
-              שמור שינויים מאובטחים
+            <button type="submit" className="w-full bg-gray-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-black transition-all shadow-lg active:scale-95">
+              שמור שינויים
             </button>
-            
-          </div>
+
+          </form>
         </div>
       </main>
     </div>
