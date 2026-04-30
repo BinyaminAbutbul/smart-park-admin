@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import React, { useState, Suspense } from "react";
 
-// כתובת השרת המעודכנת של חבר שלך
+// כתובת השרת המעודכנת
 const API_BASE_URL = "https://scarce-blah-hungrily.ngrok-free.dev";
 
-export default function PayPage() {
+function PayContent() {
   const [plate, setPlate] = useState("");
   const [parkingData, setParkingData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -46,7 +46,6 @@ export default function PayPage() {
                 value={plate}
                 onChange={(e) => setPlate(e.target.value)}
                 placeholder="00-000-00"
-                // כאן הגדרנו טקסט שחור בולט (text-black font-black)
                 className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-blue-500 focus:bg-white focus:outline-none text-center text-3xl font-black tracking-widest text-black transition-all"
               />
             </div>
@@ -93,5 +92,14 @@ export default function PayPage() {
         © 2026 SmartPark - חניון מרכז העיר
       </footer>
     </div>
+  );
+}
+
+// הייצוא הראשי עטוף ב-Suspense כדי למנוע שגיאות Build
+export default function PayPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">טוען...</div>}>
+      <PayContent />
+    </Suspense>
   );
 }
